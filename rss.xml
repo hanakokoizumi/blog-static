@@ -1,0 +1,1155 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+    <channel>
+        <title>Hanako Blog</title>
+        <link>https://hanako.me/</link>
+        <description>Hanako 的小自留地～</description>
+        <lastBuildDate>Sat, 07 Nov 2026 05:16:35 GMT</lastBuildDate>
+        <docs>https://validator.w3.org/feed/docs/rss2.html</docs>
+        <generator>Next.js + feed</generator>
+        <language>zh-CN</language>
+        <image>
+            <title>Hanako Blog</title>
+            <url>https://hanako.me/assets/hanako/portrait.jpg</url>
+            <link>https://hanako.me/</link>
+        </image>
+        <copyright>CC BY-NC-SA 4.0, Hanako</copyright>
+        <item>
+            <title><![CDATA[EC20 模块+Issabel 实现网络电话]]></title>
+            <link>https://hanako.me/posts/ec20-issabel/</link>
+            <guid isPermaLink="false">https://hanako.me/posts/ec20-issabel/</guid>
+            <pubDate>Sat, 21 Oct 2023 16:00:00 GMT</pubDate>
+            <description><![CDATA[使用移远 EC20 模块与 Issabel 搭建集中管理的网络电话和短信转发服务。]]></description>
+            <content:encoded><![CDATA[<p><del>作为一个卡粉+赛博世界游民（不是），拥有一堆各国手机号码是基本的素养</del>，这就导致我手里的各种卡变得非常的多，同时管理 114514 个号码就成了难题。</p>
+<p>我刚开始用的是 <a href="https://github.com/pppscn/SmsForwarder">pppscn/SmsForwarder</a> ，通过 Telegram 转发短信到我手里。但是这套方案用下来有几个缺点：</p>
+<ol>
+<li>只能接收短信，不能接打电话；</li>
+<li>50 元以下的能接收短信的手机就算是双卡也只能是 4G+2G 双卡双待，然而联通 2G 基本退网，相当于单卡手机；</li>
+<li>不利于远程控制、集中管理。</li>
+</ol>
+<p>也想过猫池，但鱼上看了一圈，这价格还是算了。</p>
+<p>之前做过需要 4G 联网的物联网项目，买过移远的模块，就上天猫的移远旗舰店走了一圈，可惜客服说的支持语音的最便宜的模块还挺贵的，只好作罢。</p>
+<p>后来找到这两篇文章：</p>
+<ul>
+<li><a href="https://sparktour.me/2022/10/08/quectel-ec20-asterisk-freepbx-gsm-gateway/">使用EC20模块配合asterisk及freepbx实现短信转发和网络电话</a></li>
+<li><a href="https://blog.wsl.moe/2023/03/%E5%AE%89%E8%A3%85%E5%9F%BA%E4%BA%8E-quectel-ec20-%E6%A8%A1%E5%9D%97%E7%9A%84%E7%9F%AD%E4%BF%A1%E5%8F%8A%E8%AF%AD%E9%9F%B3%E8%BD%AC%E5%8F%91%E6%9C%8D%E5%8A%A1/">安装基于 Quectel EC20 模块的短信及语音转发服务</a></li>
+</ul>
+<p>看起来还不错，而且鱼上找到了一家卖 48 块钱一片的 <code>EC20CEFAG-512-SGNS</code> 的店，相当于单卡成本 <code>48（模块）+12（MiniPCIE转接板）+6（天线）=66 元</code> ，比较划算，直接安排。</p>
+<p>他们使用的 PBX 是 FreePBX，于是我在跟着他们成功地领略了 FreePBX Distro <strong>遥遥领先</strong>的 CentOS 7 + Kernel 3.10 + 超多商业广告糊脸之后格盘了。上述第一篇文章中提到的 FreePBX Distro 不支持 UAC（USB Audio Class）就是因为 Kernel 3.10 不支持 UAC。</p>
+<p>了解到 Issabel，它是开源 PBX Elastix 的分支，由用户/开发人员社区在 3CX 收购 Elastix ，关闭社区，停止分发和开发开源版本并发布专有版本后开发。IssabelPBX 2 使用经现代化调教的 FreePBX 面板，风格比 FreePBX 更简洁、美观，而且没有商业广告和多余的插件，官方提供了安装脚本；Issabel 4 综合了服务器管理、邮件服务器、传真服务器等，官方也提供了脚本，但必须安装在 CentOS 7 上。这两个版本都在更新。</p>
+<p>真不懂 CentOS 7 有什么好的。反正 IssabelPBX 2 够用。</p>
+<h2><strong>配置模块</strong></h2>
+<p>如果是在 Windows 下配置，需要先安装<a href="https://www.qudong51.net/qudong/961.html">移远的驱动</a> 。</p>
+<p>驱动安装成功后，模块释放出 4 个 ttyUSB 端口：</p>
+<table>
+<thead>
+<tr>
+<th>接口</th>
+<th>描述</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>/dev/ttyUSB0</td>
+<td></td>
+</tr>
+<tr>
+<td>/dev/ttyUSB1</td>
+<td>PCM 语音，GPS 信号</td>
+</tr>
+<tr>
+<td>/dev/ttyUSB2</td>
+<td>AT 控制命令</td>
+</tr>
+<tr>
+<td>/dev/ttyUSB3</td>
+<td></td>
+</tr>
+</tbody></table>
+<p><a href="https://www.rhydolabz.com/documents/30/Quectel_EC20_R2.1_AT_Commands_Manual_V1.0.pdf">这里</a> 提供了移远 EC20 系列的 AT 命令文档。</p>
+<h3><strong>重置模块</strong></h3>
+<p>重置命令为 <code>at+qprtpara=3</code>，以防<del>前主人错误调教</del>；重置后需要<code>AT+CFUN=1,1</code>重启。</p>
+<h3><strong>启用 VoLTE</strong></h3>
+<p>按理来说自带的 VoLTE 是可以用，但是移远开灵车有什么办法，不知道是不是联通特色。</p>
+<p>据上面的文章说可能是针对物联网卡的配置，可是能打电话的物联网卡我真没听说。</p>
+<ol>
+<li>打开 IMS：<code>AT+QCFG=&quot;ims&quot;,1</code></li>
+<li>关闭自动选择mbn文件：<code>AT+QMBNCFG=&quot;AutoSel&quot;,0</code></li>
+<li>反激活当前的mbn：<code>at+qmbncfg=&quot;deactivate&quot;</code></li>
+<li>强制选择3gpp：<code>AT+QMBNCFG=&quot;select&quot;,&quot;ROW_Generic_3GPP&quot;</code></li>
+<li>重启：<code>AT+CFUN=1,1</code></li>
+</ol>
+<p>重启完了以后，可以使用 <code>AT+QCFG=&quot;ims&quot;</code> 查询 VoLTE 激活状态。 如果是 <code>+QCFG: &quot;ims&quot;,1,1</code>，就代表 VoLTE 已经启用并激活， 如果是 <code>+QCFG: &quot;ims&quot;,1,0</code> 就代表 VoLTE 启用了但没有激活， 如果是 <code>+QCFG: &quot;ims&quot;,0,0</code> 则代表 VoLTE 没有启用。</p>
+<h3><strong>启用 UAC</strong></h3>
+<blockquote>
+<p>不知道什么情况，我的模块在不开启 UAC 的情况下，对方会听到吱吱的噪音，非常影响通话。</p>
+</blockquote>
+<pre><code class="language-text">AT+QCFG=&quot;usbcfg&quot;,0x2C7C,0x0125,1,1,1,1,1,0,1
+</code></pre>
+<p>倒数第二个参数是启用 adb，倒数第一个参数是启用 UAC。</p>
+<p>激活之后可以通过 <code>adb devices</code> 或 <code>aplay -L</code> 查看有没有一个android设备。</p>
+<pre><code class="language-text">root@ayaka:~# adb devices
+List of devices attached
+(no serial number)  device
+
+root@ayaka:~# aplay -L
+......
+hw:CARD=Android,DEV=0
+    Android, USB Audio
+    Direct hardware device without any conversions
+plughw:CARD=Android,DEV=0
+    Android, USB Audio
+    Hardware device with all software conversions
+default:CARD=Android
+    Android, USB Audio
+    Default Audio Device
+sysdefault:CARD=Android
+    Android, USB Audio
+    Default Audio Device
+front:CARD=Android,DEV=0
+    Android, USB Audio
+    Front output / input
+surround21:CARD=Android,DEV=0
+    Android, USB Audio
+    2.1 Surround output to Front and Subwoofer speakers
+surround40:CARD=Android,DEV=0
+    Android, USB Audio
+    4.0 Surround output to Front and Rear speakers
+surround41:CARD=Android,DEV=0
+    Android, USB Audio
+    4.1 Surround output to Front, Rear and Subwoofer speakers
+surround50:CARD=Android,DEV=0
+    Android, USB Audio
+    5.0 Surround output to Front, Center and Rear speakers
+surround51:CARD=Android,DEV=0
+    Android, USB Audio
+    5.1 Surround output to Front, Center, Rear and Subwoofer speakers
+surround71:CARD=Android,DEV=0
+    Android, USB Audio
+    7.1 Surround output to Front, Center, Side, Rear and Woofer speakers
+iec958:CARD=Android,DEV=0
+    Android, USB Audio
+    IEC958 (S/PDIF) Digital Audio Output
+dmix:CARD=Android,DEV=0
+    Android, USB Audio
+    Direct sample mixing device
+usbstream:CARD=Android
+    Android
+    USB Stream Output
+</code></pre>
+<h2><strong>安装 Issabel</strong></h2>
+<p>官方网站的 ISO 是 Issabel 4，系统是 CentOS 7，我选择在纯净的 Debian 11 上安装 IssabelPBX 2。</p>
+<h3><strong>安装本体</strong></h3>
+<p>官方提供了安装脚本，一行命令解决：</p>
+<pre><code class="language-text">curl http://repo.issabel.org/install-debian-install_amp | bash
+</code></pre>
+<p>该脚本会安装 Issabel 和 Asterisk 16 及其相关依赖，Issabel 默认占用 80 端口和 443 端口，请保持畅通，安装后可修改。</p>
+<h3><strong>安装移远驱动</strong></h3>
+<pre><code class="language-text">git clone https://github.com/IchthysMaranatha/asterisk-chan-quectel
+cd asterisk-chan-quectel
+
+./bootstrap
+./configure --with-astversion=16
+make
+make install
+
+cp uac/quectel.conf /etc/asterisk
+</code></pre>
+<p>编辑 <code>/etc/asterisk/quectel.conf</code>，将最后四行的注释去掉：</p>
+<pre><code class="language-text">[quectel0]
+audio=/dev/ttyUSB1                       ; tty port for Audio, set as ttyUSB4 for Simcom if no other dev present
+data=/dev/ttyUSB2                        ; tty port for AT commands;no default value
+quec_uac=1                              ; Uncomment line if using UAC mode
+alsadev=hw:CARD=Android,DEV=0           ; Uncomment if using UAC, set device name or index as reqd
+</code></pre>
+<p>编辑 <code>/etc/asterisk/extensions_custom.conf</code> ，添加以下内容：</p>
+<pre><code class="language-text">[incoming-mobile]
+exten =&gt; sms,1,Verbose(Incoming SMS from ${CALLERID(num)} ${BASE64_DECODE(${SMS_BASE64})})
+;store
+exten =&gt; sms,n,System(echo &#39;${STRFTIME(${EPOCH},,%Y-%m-%d %H:%M:%S)} - ${QUECTELNAME} - ${CALLERID(num)}: ${BASE64_DECODE(${SMS_BASE64})}&#39; &gt;&gt; /var/log/asterisk/sms.txt)
+;for tg bot use
+;exten =&gt; sms,n,System(echo &#39;${STRFTIME(${EPOCH},,%Y-%m-%d %H:%M:%S)} - ${QUECTELNAME} - ${CALLERID(num)}\n${BASE64_DECODE(${SMS_BASE64})}&#39; &gt;&gt; /var/log/asterisk/unread_sms/${STRFTIME(${EPOCH},,%Y%m%d%H%M%S)}-${CALLERID(num)}.txt)
+exten =&gt; sms,n,Hangup()
+
+exten =&gt; ussd,1,Verbose(Incoming USSD: ${BASE64_DECODE(${USSD_BASE64})})
+exten =&gt; ussd,n,System(echo &#39;${STRFTIME(${EPOCH},,%Y-%m-%d %H:%M:%S)} - ${QUECTELNAME}: ${BASE64_DECODE(${USSD_BASE64})}&#39; &gt;&gt; /var/log/asterisk/ussd.txt)
+exten =&gt; ussd,n,Hangup()
+
+exten =&gt; _.,1,Set(CALLERID(name)=${CALLERID(num)})
+exten =&gt; _.,n,Goto(from-trunk,${EXTEN},1)
+</code></pre>
+<blockquote>
+<p>短信默认保存到 /var/log/asterisk/sms.txt；如果需要转发到 Telegram，就把 ;for tg bot use 下方的一行的注释去掉，并创建 /var/log/asterisk/unread_sms/ 文件夹，用户组和所有者都设为 asterisk。</p>
+</blockquote>
+<h3><strong>设备权限配置</strong></h3>
+<p><code>asterisk</code> 用户默认没有访问 <code>/dev/ttyUSB*</code> 的权限。通过 <code>stat /dev/ttyUSB2</code> 命令可以看到这些设备属于 <code>dialout</code> 组：</p>
+<pre><code class="language-text">root@ayaka:~# stat /dev/ttyUSB2
+  文件：/dev/ttyUSB2
+  大小：0          块：0          IO 块：4096   字符特殊文件
+设备：5h/5d    Inode：479         硬链接：1     设备类型：bc,2
+权限：(0777/crwxrwxrwx)  Uid：(    0/    root)   Gid：(   20/ dialout)
+</code></pre>
+<p>需要将 <code>asterisk</code> 用户加入 <code>dialout</code> 组，否则启动 Asterisk 时会不断报告 <code>Permission Denied</code>。</p>
+<p>如果频繁报告 <code>Device or resource busy</code> ，用 <code>lsof</code> 查看占用：</p>
+<p><img src="/content-assets/ec20-issabel/Untitled.png" alt="EC20 模块+Issabel 实现网络电话 截图 1"></p>
+<p>发现 ModemManager 占用了设备， <code>systemctl disable --now ModemManager</code> 禁用即可。</p>
+<p>最后重启 <code>asterisk</code>：</p>
+<p><code>systemctl restart asterisk</code></p>
+<h2><strong>配置 Issabel</strong></h2>
+<p>浏览器输入 Issabel 所在的 IP 地址打开 Issabel 控制台，点击中央的 <code>IssabelPBX Administration</code> 输入用户名 <code>admin</code> 和安装过程中设置的密码登录。</p>
+<p><img src="/content-assets/ec20-issabel/Untitled%201.png" alt="EC20 模块+Issabel 实现网络电话 截图 2"></p>
+<h3><strong>添加分机</strong></h3>
+<p>Applications-Extensions 添加分机号。</p>
+<p>这里选择 IAX2 Device，因为 NAT 配置方便，只需要转发 4569 端口即可；而 SIP 需要转发 5060 和 10000-20000 所有的端口。</p>
+<p><img src="/content-assets/ec20-issabel/Untitled%202.png" alt="EC20 模块+Issabel 实现网络电话 截图 3"></p>
+<p>右下角点击 <code>Submit</code> 继续。</p>
+<p><img src="/content-assets/ec20-issabel/Untitled%203.png" alt="EC20 模块+Issabel 实现网络电话 截图 4"></p>
+<p>User Extension 为所指定的用户分机号，Display Name 为显示名，可以在客户端中看到。</p>
+<p>Secret 为登录密码，可以自己指定。</p>
+<p>其他部分不需要修改，Submit 提交即可。</p>
+<p>Issabel 的列表比较隐蔽，在右上角的小按钮；默认为添加页面，我也差点找不到以为出 bug 了。</p>
+<p><img src="/content-assets/ec20-issabel/Untitled%204.png" alt="EC20 模块+Issabel 实现网络电话 截图 5"></p>
+<p>如果有其它设备，需要逐个添加；如果是 SIP 话机或者内网设备，可以考虑添加 SIP 设备；如果是手机，建议使用 IAX2。</p>
+<blockquote>
+<p>我曾将 SIP 端口 5060 穿透到公网，第三天 VPS 流量没了，一查日志发现 SIP 被人爆破了；IAX2 暂时没出事。</p>
+</blockquote>
+<h3><strong>添加中继</strong></h3>
+<p>Connectivity-Trunks，选择 <code>Add Custom Trunk</code> 。</p>
+<p><code>Trunk Name</code> 随便填，Custom Dial String 填 <code>Quectel/quectel0/$OUTNUM$</code>，直接 Submit。</p>
+<p>记得删掉除了刚刚添加的 Trunk 外其它自动生成的 Trunk。</p>
+<h3><strong>添加响铃组</strong></h3>
+<p>如果有多台设备，在呼入时要求所有设备同时响铃，其中一台设备接听后其它设备自动停止响铃，需要将这些设备加入 Ring Group。</p>
+<p>Applications-Ring Groups 添加响铃组，<code>Ring-Group Number</code> 要独立于其它已添加的分机号，<code>Group Description</code> 随便填，<code>Extension List</code> 用换行符分隔，可以用 <code>Extension Quick Pick</code> 直接选择， <code>Destination if no answer</code> 可以选 <code>Terminate Call</code> 即挂断。</p>
+<h3><strong>添加入站路由</strong></h3>
+<p>Connectivity-Inbound Routes 添加入站路由。</p>
+<p><code>Description</code> 随便填，<code>Set Destination</code> 选择 Extension 或者 Ring Group，然后在下方的出口里选择刚添加的。</p>
+<h3><strong>添加出站路由</strong></h3>
+<p>Connectivity-Outbound Routes 添加出站路由。</p>
+<p><code>Route Name</code> 随便填，<code>Trunk Sequence for Matched Routes</code> 选刚刚添加的 Trunk，设置一个 <code>X.</code> 作为 Pattern 以匹配所有号码。</p>
+<p><img src="/content-assets/ec20-issabel/Untitled%205.png" alt="EC20 模块+Issabel 实现网络电话 截图 6"></p>
+<h2><strong>测试呼叫</strong></h2>
+<p>到这里，点击左上角的 Apply Config，然后就可以测试电话了。我使用的是 Zoiper，填写后会自动识别使用的协议。给自己打个电话就可以测试了。</p>
+<h2><strong>短信转发</strong></h2>
+<p>拿上面博主的脚本稍微改了一下，添加了自动重试。</p>
+<pre><code class="language-python">import os
+import requests
+import json
+import time
+import schedule
+from retrying import retry
+
+tg_bot_token = &quot;TOKEN&quot;
+sms_log_dir = &quot;/var/log/asterisk/unread_sms/&quot;
+tg_send_msg_url = &quot;https://api.telegram.org/bot&quot;+tg_bot_token+&quot;/sendMessage&quot;
+tg_receive_msg_url = &quot;https://api.telegram.org/bot&quot;+tg_bot_token+&quot;/getUpdates&quot;
+tg_receive_msg_init_count = 0
+
+#iterate all files in sms_log_dir
+@retry(stop_max_attempt_number=3)
+def receive_sms():
+    print(&quot;recv poll start&quot;)
+    for file in os.listdir(sms_log_dir):
+        f = open(sms_log_dir+file, &quot;r&quot;)
+        sms_text = f.read()
+        send_body = {}
+        send_body[&#39;chat_id&#39;] = &quot;CHAT ID&quot;
+        send_body[&#39;text&#39;] = sms_text
+        requests.get(tg_send_msg_url, json=send_body)
+        os.remove(sms_log_dir+file)
+
+@retry(stop_max_attempt_number=3)
+def update_tg_receive_msg_init_count():
+    new_msg = requests.get(tg_receive_msg_url).json()
+    if new_msg[&#39;result&#39;]:
+        with open(&#39;processed_update_id.txt&#39;, &#39;w&#39;) as f:
+            f.write(str(new_msg[&#39;result&#39;][-1][&#39;update_id&#39;]))
+
+@retry(stop_max_attempt_number=3)
+def send_sms():
+    print(&quot;send poll start&quot;)
+    f = open(&#39;processed_update_id.txt&#39;, &quot;r&quot;)
+    processed_update_id = f.read()
+    new_msg = requests.get(tg_receive_msg_url).json()
+    if new_msg[&#39;result&#39;]:
+        for i in new_msg[&#39;result&#39;]:
+            if i[&#39;update_id&#39;] &gt; int(processed_update_id):
+                with open(&#39;processed_update_id.txt&#39;, &#39;w&#39;) as g:
+                    g.write(str(i[&#39;update_id&#39;]))
+                if (&#39;text&#39; in i[&#39;message&#39;]):
+                    command = str(i[&#39;message&#39;][&#39;text&#39;])
+                    #/sendsms quectel0 10010 cxll
+                    if command.startswith(&#39;/sendsms&#39;):
+                        command_list = command.split(&#39; &#39;)
+                        if len(command_list) == 4:
+                            dongle = command_list[1]
+                            dest = command_list[2]
+                            context = command_list[3]
+                            #asterisk -rx &#39;quectel sms quectel0 10010 &quot;cxll&quot;&#39;
+                            asterisk_command = &quot;asterisk -rx &quot; + &quot;&#39;quectel sms &quot; + dongle + &quot; &quot; + dest + &quot; &quot; + context + &quot;&#39;&quot;
+                            print(asterisk_command)
+                            os.system(asterisk_command)
+
+schedule.every(5).seconds.do(send_sms)
+schedule.every(5).seconds.do(receive_sms)
+
+update_tg_receive_msg_init_count()
+while True:
+    schedule.run_pending()
+    time.sleep(1)
+</code></pre>
+<h2><strong>写在最后</strong></h2>
+<p>这台机器可能会顺便做主要服务器之一使用吧。</p>
+<p>之前装 FreePBX 的废物 CentOS 的时候可没这个想法。</p>
+]]></content:encoded>
+            <author>Hanako</author>
+            <category>随便折腾</category>
+            <category>Issabel</category>
+            <category>VoIP</category>
+            <enclosure url="https://hanako.me/content-assets/ec20-issabel/Untitled.png" length="0" type="image/png"/>
+        </item>
+        <item>
+            <title><![CDATA[Ivy Bridge 平台 PVE 直通 RX550 显卡]]></title>
+            <link>https://hanako.me/posts/pve-rx550-passthrough/</link>
+            <guid isPermaLink="false">https://hanako.me/posts/pve-rx550-passthrough/</guid>
+            <pubDate>Tue, 20 Jun 2023 16:00:00 GMT</pubDate>
+            <description><![CDATA[在 Ivy Bridge 平台上配置 PVE、vfio 与 RX550 显卡直通。]]></description>
+            <content:encoded><![CDATA[<p>最近有些不想把笔记本带来带去的，试了一下拿华硕 QM1 棒子日常使用。</p>
+<p>很好，确实促进血液循环。</p>
+<p><del>都是 Z3735F，为什么板子至少能带动百合语，棒子跑个 Lubuntu 都吃力</del></p>
+<p>刚好网络出口从以前的双线（联通+校园网）切换到校园网单线（谁叫它便宜呢），我把主路由又换回了锐捷 X32 Pro 硬路由。加上从 DN42 退坑，我对网络的发烧程度显著降低，对插在唯一 PCIe X16 接口上的四口网卡没有了需求。</p>
+<p>遂决定撤下该网卡，换上吃灰一年多的 RX550 显卡，推掉以前的 ESXi 6.7，配置了一台 All in One。</p>
+<h1>设备配置</h1>
+<p>先贴上我这台 HomeServer 的配置：</p>
+<table>
+<thead>
+<tr>
+<th>主板</th>
+<th>联想 ThinkCentre M92p</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>CPU</td>
+<td>8 x Intel(R) Xeon(R) CPU E3-1230 V2 @ 3.30GHz</td>
+</tr>
+<tr>
+<td>RAM</td>
+<td>24GB DDR3</td>
+</tr>
+<tr>
+<td>显卡</td>
+<td>Radeon RX550 Lexa Pro</td>
+</tr>
+</tbody></table>
+<p>有一块闲置的 PCIe X1 NVMe 转接板，就把一块闲置的 NVMe 硬盘接了上去。</p>
+<h1>机器配置</h1>
+<h2>虚拟化设置</h2>
+<p>在 BIOS 设置中启用 VT-x。由于需要直通 PCIe 设备，还需启用 VT-d。</p>
+<h2>启用 CSM</h2>
+<p>该机器使用 UEFI 引导无法使用显卡直通，遂在 BIOS 中启用 CSM。</p>
+<h2>安装 PVE</h2>
+<p>PVE 默认强制使用 GPT 分区表、UEFI 引导方式，导致无法通过 Legacy 方式启动。</p>
+<p>使用 PVE ISO 的 Rescue 模式启动到安装好的 PVE 环境，使用 fdisk 命令将分区表转换为 MBR、删除头部的 EFI 分区（分区号 1、2），之后使用 grub-install 安装 Legacy 版 Grub，即可正常通过 Legacy 方式启动。</p>
+<h1>导出显卡 ROM</h1>
+<p>首先启动到使用 Legacy 方式启动的 WinPE，然后用 amdvbflash 导出显卡 ROM，大小为 512K：</p>
+<p><code>amdvbflash -s 0 vbios.rom</code></p>
+<p>将 <code>vbios.rom</code> 保存到 PVE 的 <code>/usr/share/kvm</code> 目录下。</p>
+<h1>启用 vfio</h1>
+<h2>IOMMU</h2>
+<p>编辑 Grub 配置文件 <code>/etc/default/grub</code> ，添加以下参数：</p>
+<pre><code class="language-bash">GRUB_CMDLINE_LINUX_DEFAULT=&quot;quiet intel_iommu=on iommu=pt initcall_blacklist=sysfb_init&quot;
+</code></pre>
+<blockquote>
+<p>我的 PVE 版本是 7.4，内核版本为 5.15.102-1。如果使用的是 5.15 之前的 Linux 内核，可能需要将 <code>initcall_blacklist=sysfb_init</code> 换成 <code>video=vesafb:off video=efifb:off</code> 。</p>
+</blockquote>
+<p>执行 <code>update-grub</code> 命令以使更改生效。</p>
+<h2>内核模块</h2>
+<p>在 <code>/etc/modules</code> 中添加以下模块：</p>
+<pre><code class="language-bash">vfio
+vfio_iommu_type1
+vfio_pci
+vfio_virqfd
+</code></pre>
+<h1>显卡直通</h1>
+<p>到这里为止，除了显卡的任何 PCIe 设备都可以直通了。如果需要直通显卡，需要屏蔽宿主机的显卡驱动，并将显卡的使用权转交给 vfio。</p>
+<p>先查看一下需要直通的显卡：</p>
+<pre><code class="language-bash">root@pve:~# lspci -knn | grep -i -A 2 vga
+01:00.0 VGA compatible controller [0300]: Advanced Micro Devices, Inc. [AMD/ATI] Lexa PRO [Radeon 540/540X/550/550X / RX 540X/550/550X] [1002:699f] (rev c7)
+        Subsystem: Advanced Micro Devices, Inc. [AMD/ATI] Lexa PRO [Radeon 540/540X/550/550X / RX 540X/550/550X] [1002:0b04]
+        Kernel driver in use: vfio-pci
+</code></pre>
+<p>其中 <code>01:00.0</code> 代表组名， <code>1002:699f</code> 代表厂商 ID 和设备 ID。</p>
+<p>然后查看组内的所有设备：</p>
+<pre><code class="language-bash">root@pve:~# lspci -n -s 01:00
+01:00.0 0300: 1002:699f (rev c7)
+01:00.1 0403: 1002:aae0
+</code></pre>
+<p>配置显卡直通：</p>
+<pre><code class="language-bash">echo &quot;options vfio-pci ids=1002:699f,1002:aae0 disable_vga=1&quot; &gt; /etc/modprobe.d/vfio.conf
+</code></pre>
+<p>重启宿主机，如果屏幕输出在显示登录提示之前卡住不动，PVE WebUI 可以访问，说明直通成功。</p>
+<h1>虚拟机配置</h1>
+<p>虚拟机配置要点：</p>
+<ol>
+<li>BIOS 必须使用 OVMF(UEFI)</li>
+<li>处理器配置为 <code>cpu: host, hidden=1, flags=+pcid</code></li>
+<li>机型为 q35</li>
+<li>添加 PCI 设备，配置如下：</li>
+</ol>
+<p><img src="/content-assets/pve-rx550-passthrough/Untitled.png" alt="Ivy Bridge 平台 PVE 直通 RX550 显卡 截图 1"></p>
+<ol>
+<li>手动修改配置文件，在 <code>hostpci0</code> 后指定 ROM 文件，即在末尾追加 <code>,romfile=vbios.rom</code></li>
+<li>禁用 KVM 自带虚拟显卡，即将显示设置为 none。</li>
+</ol>
+<p>至此显卡直通已经完成。</p>
+]]></content:encoded>
+            <author>Hanako</author>
+            <category>随便折腾</category>
+            <category>Proxmox VE</category>
+            <category>PCIe</category>
+            <category>直通</category>
+            <category>显卡直通</category>
+            <enclosure url="https://hanako.me/content-assets/pve-rx550-passthrough/Untitled.png" length="0" type="image/png"/>
+        </item>
+        <item>
+            <title><![CDATA[在 Parallels 上运行 Rosetta]]></title>
+            <link>https://hanako.me/posts/parallels-rosetta/</link>
+            <guid isPermaLink="false">https://hanako.me/posts/parallels-rosetta/</guid>
+            <pubDate>Tue, 01 Nov 2022 16:00:00 GMT</pubDate>
+            <description><![CDATA[将 Apple Virtualization Framework 中的 Rosetta 支持移植到 Parallels Linux 虚拟机。]]></description>
+            <content:encoded><![CDATA[<p>你果在今年 6 月发布了 macOS Ventura，其中一个亮点功能是支持在 Linux 虚拟机中运行 Rosetta。</p>
+<p>得知这个消息的时候，我心血来潮地升了个 Beta 版来体验。Bug 真 TM 多，不过我是从 Beta 7 开始的，应该没 Beta 1 惨。<del>下次我绝对不升预览版</del></p>
+<p>根据 <a href="https://developer.apple.com/documentation/virtualization/running_intel_binaries_in_linux_vms_with_rosetta">Running Intel Binaries in Linux VMs with Rosetta</a> 的描述，我使用当时实验性支持 Rosetta 的 UTM 4.0 Beta，在 Apple Virtualization.framework（下文简称 VF）下安装了 Arch Linux ARM，根据 Apple Developer 的文档挂载了 Rosetta VirtioFS，运行了 update-binfmts。</p>
+<pre><code class="language-bash">mkdir /tmp/mountpoint
+sudo mount -t virtiofs rosetta /tmp/mountpoint
+sudo /usr/sbin/update-binfmts --install rosetta /tmp/mountpoint/rosetta \
+    --magic &quot;\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x3e\x00&quot; \
+    --mask &quot;\xff\xff\xff\xff\xff\xfe\xfe\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff&quot; \
+    --credentials yes --preserve no --fix-binary yes
+</code></pre>
+<p>update-binfmts 的参数意思不用多说。</p>
+<p>不过 aarch64 环境下大量缺少 x86-64 的 .so 动态链接库，pacman 的多架构软件包管理又非常感人，在随便测试了一个在某 x86 服务器上静态编译的 Hello World 后，不得已换成了 Debian 11~（Ubuntu 爬）~，dpkg 可以方便地管理多个处理器架构的软件包：</p>
+<pre><code class="language-bash">dpkg --add-architecture amd64
+dpkg --add-architecture i386
+</code></pre>
+<p>之后 update 一遍，随便装个 amd64 的包：</p>
+<pre><code class="language-bash">apt-get install libx11-dev:amd64
+</code></pre>
+<p>ld.so.conf 会被自动配置并运行 ldconfig。</p>
+<pre><code class="language-bash">&gt; ls /etc/ld.so.conf.d
+aarch64-linux-gnu.conf           libc.conf
+arm-linux-gnueabihf.conf         x86_64-linux-gnu.conf
+fakeroot-aarch64-linux-gnu.conf
+
+&gt; cat /etc/ld.so.conf.d/x86_64-linux-gnu.conf
+# Multiarch support
+/usr/local/lib/x86_64-linux-gnu
+/lib/x86_64-linux-gnu
+/usr/lib/x86_64-linux-gnu
+</code></pre>
+<p>Google 没有提供 ARM 版的 Chrome。Chromium 在 Rosetta 下闪退。Firefox 运行良好，虽然肯定比 ARM64 原生版慢。</p>
+<p>能够支持 GUI 应用程序，这是我没有想到的。</p>
+<h2>切换到 Parallels Desktop</h2>
+<p>截至本文撰写时，UTM 最新版是 v4.0.9。</p>
+<p>虽然我不知道现在 UTM 对 VF 的支持怎么样，但是当时 VF 下不能自动变换分辨率（屏幕分辨率在设定中是写死的，似乎是 VF 的缺陷）、不能使用剪贴板互通、不能使用触控板滚屏（后面两个应该是能用了），这些功能虽然在基于 Hypervisor.framework（下文简称 HVF）的 QEMU 上能够使用，但使用体验也是比较感人的。</p>
+<p>lima 使用的是基于 HVF 的 QEMU，不能魔改代码启用 Rosetta。</p>
+<p>买了正版 Parallels Desktop 当然是要物尽其用了对吧（而且我当时也有退回 macOS 12 的打算）</p>
+<p>RosettaLinux 在 macOS 下的位置是 <code>/Library/Apple/usr/libexec/oah/RosettaLinux</code>。</p>
+<p>把 RosettaLinux 执行文件 copy 出来，挂载到 Parallels Desktop 的 Debian 11 上，毫无意外地报错了。</p>
+<pre><code class="language-bash">rosetta error: Rosetta is only intended to run on Apple Silicon with a macOS host using Virtualization.framework with Rosetta mode enabled
+追踪与中断点陷阱
+</code></pre>
+<p>都是硬件虚拟化，虚拟处理器都是一样的，魔改一番或许有戏。</p>
+<h2>魔改工程</h2>
+<pre><code class="language-text">&gt; file rosetta
+rosetta: ELF 64-bit LSB executable, ARM aarch64, version 1 (SYSV), statically linked, BuildID[xxHash]=be14a432992ecdeb, stripped
+</code></pre>
+<p>把 rosetta elf 丢进 IDA 溜达溜达。<del>请无视这个 Windows，都怪某 Hackergame</del></p>
+<p>ELF 类型选 ARM64 小端序。</p>
+<p>字符串全文搜索上述的 <code>Rosetta is only</code> ，可见有两种情况会跳转到该错误。</p>
+<p><img src="/content-assets/parallels-rosetta/image-20221101190318861.png" alt="在 Parallels 上运行 Rosetta 截图 1"></p>
+<h3>情况 1</h3>
+<p><img src="/content-assets/parallels-rosetta/image-20221101190543414.png" alt="在 Parallels 上运行 Rosetta 截图 2"></p>
+<p>这应该是 Apple 在故意整活。</p>
+<h3>情况 2</h3>
+<p><img src="/content-assets/parallels-rosetta/image-20221101190849291.png" alt="在 Parallels 上运行 Rosetta 截图 3"></p>
+<p>在进行某种计算。</p>
+<p>顺便学习了一下 ARM 指令集。</p>
+<p>部分涉及跳转的 ARM 指令如下：</p>
+<blockquote>
+<p>TBZ: test branch zero. 测试位为0，则跳转。 TBNZ: test branch no zero. 测试位不为0，则跳转。 CBNZ: 当Xt寄存器的值(64位)非零，那么执行跳转，地址是当前PC+label的偏移地址。 CBZ: 当Xt寄存器的值(64位)是零，那么执行跳转，地址是当前PC+label的偏移地址。</p>
+</blockquote>
+<p>将 TBNZ 和 CBNZ 分别变更为 TBZ 和 CBZ，导出到文件。</p>
+<blockquote>
+<p>IDA 不自带除 x86 外的平台的汇编器，尝试直接编辑汇编时会报告以下错误：</p>
+<p><img src="/content-assets/parallels-rosetta/image-20221101191659940.png" alt="在 Parallels 上运行 Rosetta 截图 4"></p>
+<p>可以安装 <a href="https://www.keystone-engine.org/keypatch/">Keypatch</a> 后使用 Keypatch Patcher 命令，也可以在 Hex View 中直接变更十六进制文本。</p>
+<p>直接变更十六进制文本时，记得是小端序。</p>
+</blockquote>
+<p>直接运行，看起来不报错了。</p>
+<p><img src="/content-assets/parallels-rosetta/image-20221101192559210.png" alt="在 Parallels 上运行 Rosetta 截图 5"></p>
+<p>尝试运行上述的静态链接程序，没有异常。</p>
+<p><img src="/content-assets/parallels-rosetta/image-20221101193304902.png" alt="在 Parallels 上运行 Rosetta 截图 6"></p>
+<p><del>这不就成了吗</del></p>
+<p>复制到 /bin 目录，安装：</p>
+<pre><code class="language-bash">sudo apt install update-binfmts
+sudo /usr/sbin/update-binfmts --install rosetta /bin/rosetta \
+    --magic &quot;\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x3e\x00&quot; \
+    --mask &quot;\xff\xff\xff\xff\xff\xfe\xfe\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff&quot; \
+    --credentials yes --preserve no --fix-binary yes
+</code></pre>
+<p>直接运行，正常：</p>
+<p><img src="/content-assets/parallels-rosetta/image-20221101194008837.png" alt="在 Parallels 上运行 Rosetta 截图 7"></p>
+<p>安装 amd64 相关链接库：</p>
+<pre><code class="language-bash">sudo dpkg --add-architecture amd64
+sudo apt install libc6:amd64
+sudo apt install libx11-6:amd64
+</code></pre>
+<p>安装 Firefox：</p>
+<pre><code class="language-bash">sudo apt remove firefox-esr
+sudo apt autoremove
+sudo apt install firefox-esr:amd64
+</code></pre>
+<p><img src="/content-assets/parallels-rosetta/image-20221101194647582.png" alt="在 Parallels 上运行 Rosetta 截图 8"></p>
+<p><del>甚至能播放视频，音频正常播放，看来非常稳</del></p>
+<h2>总结</h2>
+<p>Apple 这墙跟纸糊的一样。</p>
+<p>不过我在试图运行于 Asahi Linux 时碰壁了，似乎是 Asahi Linux 默认的 16K Kernel 没法用，4K IOMMU 补丁无效。</p>
+<p>反正 Asahi Linux 的 GPU 驱动还没公布，短时间内不会用上了就不管了。</p>
+<p><del>其它 ARM 设备要用的话估计有点困难，Apple Silicon 的内存一致性模型有为 Rosetta 专门设计，就算能跑那也会比 Apple Silicon 效率要低。</del></p>
+<blockquote>
+<p>经群友提醒，非 VF 虚拟机下无法调整控制 TSO 序的寄存器。需要一种在 macOS 下调整 TSO 序的方法。</p>
+</blockquote>
+<p>改天装个 Vivado 看看会不会比 Windows 版的快。</p>
+]]></content:encoded>
+            <author>Hanako</author>
+            <category>随便折腾</category>
+            <category>Parallels</category>
+            <category>Rosetta</category>
+            <enclosure url="https://hanako.me/content-assets/parallels-rosetta/image-20221101190318861.png" length="0" type="image/png"/>
+        </item>
+        <item>
+            <title><![CDATA[Hackergame 2022 Writeup]]></title>
+            <link>https://hanako.me/posts/hackergame-2022/</link>
+            <guid isPermaLink="false">https://hanako.me/posts/hackergame-2022/</guid>
+            <pubDate>Sat, 29 Oct 2022 16:00:00 GMT</pubDate>
+            <description><![CDATA[Hackergame 2022 的解题记录，覆盖 Web、算法、二进制与杂项题目。]]></description>
+            <content:encoded><![CDATA[<p>打完 Hackergame，我表示：我好菜哦。</p>
+<p><img src="/content-assets/hackergame-2022/Untitled.png" alt="Hackergame 2022 Writeup 截图 1"></p>
+<p>勉强进了前 50，有一题因为看错题目差点做出来，只能说不愧是我。</p>
+<p>话说今年的 Linux Kernel Pwn 题好多哦。</p>
+<h2>签到</h2>
+<p>0.1秒签个锤子。</p>
+<p>直接提交，改 URL 参数。</p>
+<h2>喵咪问答猫</h2>
+<blockquote>
+<p>感谢红人 @ZenithalH 对本次猫咪问答的大力支持喵。</p>
+</blockquote>
+<ol>
+<li><a href="https://cybersec.ustc.edu.cn/2022/0826/c23847a565848/page.htm">https://cybersec.ustc.edu.cn/2022/0826/c23847a565848/page.htm</a> 喵。</li>
+<li><a href="https://ftp.lug.ustc.edu.cn/%E6%B4%BB%E5%8A%A8/2022.9.20_%E8%BD%AF%E4%BB%B6%E8%87%AA%E7%94%B1%E6%97%A5/slides/gnome-wayland-user-perspective.pdf">https://ftp.lug.ustc.edu.cn/活动/2022.9.20_软件自由日/slides/gnome-wayland-user-perspective.pdf</a> 喵。</li>
+<li><a href="https://www.betaarchive.com/forum/viewtopic.php?t=34790">https://www.betaarchive.com/forum/viewtopic.php?t=34790</a> 喵。</li>
+<li><a href="https://github.com/torvalds/linux/search?q=CVE-2021-4034&type=commits">https://github.com/torvalds/linux/search?q=CVE-2021-4034&amp;type=commits</a> 喵。</li>
+<li>在 shodan 搜索这个 fingerprint 喵。</li>
+</ol>
+<p><img src="/content-assets/hackergame-2022/Untitled%201.png" alt="Hackergame 2022 Writeup 截图 2"></p>
+<ol>
+<li><a href="https://netfee.ustc.edu.cn/faq/index.html">https://netfee.ustc.edu.cn/faq/index.html</a> 不准确，遂从 2003-01-01 开始爆破喵。得到 2003-03-01 喵。</li>
+</ol>
+<h2>听话，让我看看！</h2>
+<h3>VS Code 里的 flag</h3>
+<p>直接在目录里搜索 flag 就有了。</p>
+<h3>Rclone 里的 flag</h3>
+<p>翻遍了文件夹里所有和 rclone 有关的文件，觉得 user/.config/rclone/rclone.conf 比较可疑。</p>
+<p><code>pass = tqqTq4tmQRDZ0sT_leJr7-WtCiHVXSMrVN49dWELPH1uce-5DPiuDtjBUN3EI38zvewgN5JaZqAirNnLlsQ</code></p>
+<p>找到 <a href="https://github.com/rclone/rclone/blob/master/fs/config/obscure/obscure.go">https://github.com/rclone/rclone/blob/master/fs/config/obscure/obscure.go</a> ，应该只是经过简单编码，未做加密，遂丢进 go 里加个 main 函数调用 Reveal 函数就出结果。</p>
+<h2>Python 4.0</h2>
+<blockquote>
+<p>鉴于 Python 3.14 的性能将超过 C++，如果 Python 3 有 100 个子版本的话，Python 4 估计就得靠量子计算机运行了。</p>
+</blockquote>
+<p>正则匹配替换大法好。</p>
+<h2>Lycoris Recoil 足立脑子抽风版</h2>
+<p>连 BeautifulSoup 都省了，split 出算式之后 <code>eval</code> 一下就出来了，之后马上交回去。</p>
+<pre><code class="language-python">import requests
+import time
+
+url = &#39;http://202.38.93.111:10047/xcaptcha&#39;
+
+def solve():
+    t1 = time.time()
+    session = requests.Session()
+    session.get(&#39;http://202.38.93.111:10047/?token=&#39;)
+    resp = session.get(url)
+    q1 = resp.text.split(&#39;&lt;label for=&quot;captcha1&quot;&gt;&#39;)[1].split(&#39; 的结果是？&#39;)[0]
+    q2 = resp.text.split(&#39;&lt;label for=&quot;captcha2&quot;&gt;&#39;)[1].split(&#39; 的结果是？&#39;)[0]
+    q3 = resp.text.split(&#39;&lt;label for=&quot;captcha3&quot;&gt;&#39;)[1].split(&#39; 的结果是？&#39;)[0]
+    x1_1, x1_2 = q1.split(&#39;+&#39;)
+    x2_1, x2_2 = q2.split(&#39;+&#39;)
+    x3_1, x3_2 = q3.split(&#39;+&#39;)
+    a1 = (int(x1_1)) + (int(x1_2))
+    a2 = (int(x2_1)) + (int(x2_2))
+    a3 = (int(x3_1)) + (int(x3_2))
+
+    t2 = time.time()
+    resp = session.post(url, headers={
+        &#39;Content-Type&#39;: &#39;application/x-www-form-urlencoded&#39;
+    }, data=&#39;captcha1=%s&amp;captcha2=%s&amp;captcha3=%s&#39; % (a1, a2, a3))
+    assert &#39;验证失败&#39; in resp.text
+
+while(True):
+    solve()
+</code></pre>
+<h2>开盒</h2>
+<h3>第一题</h3>
+<p>把图片文件用 macOS 自带预览打开，全出来了。</p>
+<p>不过出题人很鸡贼地把位置信息抹掉了。</p>
+<h3>第二题</h3>
+<p>把建筑物丢进谷歌识图，得到 ZOZOマリンスタジアム。</p>
+<p>鉴于你们立本的郵便番号比较离谱，遂根据图片找到酒店。</p>
+<p><img src="/content-assets/hackergame-2022/Untitled%202.png" alt="Hackergame 2022 Writeup 截图 3"></p>
+<p><img src="/content-assets/hackergame-2022/Untitled%203.png" alt="Hackergame 2022 Writeup 截图 4"></p>
+<p>根据 EXIF 中的 Xiaomi sm6115 找到所有 Snapdragon 660 芯片的小米手机，比对摄像头形状，结论是 Redmi 9T，分辨率是 2340x1080。</p>
+<p>为了查航班信息，我向 flightradar24 出卖了自己的 AmEx 卡。记得取消 7 天的试用订阅。</p>
+<p>切换到 Multi 视图，Playback 到 UTC 2022 年 9 月 14 日 9 时 23 分，选中所有在海上的飞机，一个个尝试。</p>
+<p><img src="/content-assets/hackergame-2022/Untitled%204.png" alt="Hackergame 2022 Writeup 截图 5"></p>
+<h2>数字爆破</h2>
+<p>不会。大力出奇迹，2w 次后出结果。</p>
+<pre><code class="language-python">import requests
+
+range = [0, 500000, 1000000]
+
+token = &quot;&quot;
+url_login = &quot;http://202.38.93.111:18000/&quot;
+url_submit = &quot;http://202.38.93.111:18000/state&quot;
+session = requests.session()
+session.get(url_login, params={&#39;token&#39;: token})
+
+i = 0
+while True:
+    i += 1
+    num = range[1] / 1000000
+    session.post(
+        url=url_submit,
+        headers={
+            &quot;Content-Type&quot;: &quot;text/plain;charset=UTF-8&quot;,
+            &quot;authorization&quot;: &quot;Bearer &quot; + token
+        },
+        data=&quot;&lt;state&gt;&lt;guess&gt;%.6f&lt;/guess&gt;&lt;/state&gt;&quot; % num
+    )
+    resp = session.get(
+        url=url_submit,
+        headers={
+            &quot;authorization&quot;: &quot;Bearer &quot; + token
+        }
+    )
+    if &#39;guess&#39; not in resp.text:
+        if &#39;flag&#39; in resp.text:
+            print(&#39;%s %.6f flag&#39; % (i, num))
+            exit(0)
+        else:
+            print(&#39;%s %.6f right&#39; % (i, num))
+            range[0] = 0
+            range[2] = 1000000
+    else:
+        if &#39;more=&quot;true&quot;&#39; in resp.text:
+            print(&#39;%s %.6f more&#39; % (i, num))
+            range[2] = range[1]
+        if &#39;less=&quot;true&quot;&#39; in resp.text:
+            print(&#39;%s %.6f less&#39; % (i, num))
+            range[0] = range[1]
+        range[1] = round((range[0] + range[2]) / 2)
+</code></pre>
+<h2>这么写论文会被学术界拉黑的罢</h2>
+<h3>纯文本</h3>
+<p>用过 $\LaTeX$ 的应该都会。</p>
+<p><code>\input{/flag1}</code></p>
+<h3>特殊字符混入</h3>
+<p>参考 <a href="https://stackoverflow.com/questions/67437815/how-to-use-to-latex-read-all-content-of-a-file-concluding-some-lines-have">how to use to latex read all content of a file concluding some lines have “%”</a> 将 % 改为 # 和 _ 就好。</p>
+<pre><code class="language-latex">\newread\file
+\catcode`\#=11
+\catcode`\_=11
+\openin\file=/flag2
+\read\file to\fileline
+\fileline
+\closein\file
+</code></pre>
+<h2>能关 Revision 的 Wiki 都不纯洁</h2>
+<p>在 <a href="https://forum.dokuwiki.org/d/18854-disabling-restoring-old-revision/5">Disabling restoring old revision</a> 中看到：</p>
+<pre><code class="language-text">When I disabled display of old revisions, restoring was still available through &#39;Recent Changes&#39; -&gt; &#39;Show differences to current revisions&#39;.
+</code></pre>
+<p>在 DokuWiki 官网进入 <code>Show differences to current revisions</code>，得到链接 <code>do=diff</code>，丢进题设 Wiki 中，得到 flag。</p>
+<p><img src="/content-assets/hackergame-2022/Untitled%205.png" alt="Hackergame 2022 Writeup 截图 6"></p>
+<h2>简陋的 OJ</h2>
+<h3>无法 AC 的题目</h3>
+<p>阅读代码，得知输出位于 <code>./data</code> 下的 <code>static.out</code> 和 <code>dynamic*.out</code> 中，其中 <code>dynamic*.out</code> 设了 0700 权限，被判程序以 <code>runner</code> 用户运行。</p>
+<p><code>static.out</code> 直接输出即可。</p>
+<pre><code class="language-c">#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+int main(){
+    system(&quot;cat ./data/static.out&quot;);
+    return 0;
+}
+</code></pre>
+<p>第二问，Linux Pwn 不熟练，再见。</p>
+<h2>嘿嘿，我的板板🤤</h2>
+<p>使用 <a href="https://github.com/gerbv/gerbv">gerbv</a> 打开所有层，导出为 PDF，用 PDF 编辑器删除所有圈圈，得到 flag。</p>
+<p><img src="/content-assets/hackergame-2022/Untitled%206.png" alt="Hackergame 2022 Writeup 截图 7"></p>
+<p><img src="/content-assets/hackergame-2022/Untitled%207.png" alt="Hackergame 2022 Writeup 截图 8"></p>
+<h2>Flag 管理员</h2>
+<p>按钮乱跑不乖怎么办？让触摸屏来治治！</p>
+<p>什么？治了还不乖？</p>
+<p>使用 x32dbg 找到“超级管理员”的位置：</p>
+<p><img src="/content-assets/hackergame-2022/Untitled%208.png" alt="Hackergame 2022 Writeup 截图 9"></p>
+<p>将 4017FD 改为 401840，导出，运行，收工。</p>
+<p><img src="/content-assets/hackergame-2022/Untitled%209.png" alt="Hackergame 2022 Writeup 截图 10"></p>
+<h2>高数早忘光了</h2>
+<p>瞎填一通，分数为 0。</p>
+<p><img src="/content-assets/hackergame-2022/Untitled%2010.png" alt="Hackergame 2022 Writeup 截图 11"></p>
+<p><code>http://202.38.93.111:10056/share?result=MDox</code></p>
+<pre><code class="language-bash">&gt; echo MDox | base64 -d0:1&gt; echo &quot;100:1&quot; | base64MTAwOjEK
+</code></pre>
+<p>好，100 分。</p>
+<p><img src="/content-assets/hackergame-2022/Untitled%2011.png" alt="Hackergame 2022 Writeup 截图 12"></p>
+<p>康康页面，页面中使用 <code>innerHTML</code> 展示分数。</p>
+<p>康康判题脚本，脚本把 flag 放在了 cookies 中。</p>
+<p>那就可以通过 JavaScript 在页面上做手脚，显示 cookies 就有 flag 了。</p>
+<p>鉴于 <a href="https://developer.mozilla.org/zh-CN/docs/Web/API/Element/innerHTML">MDN</a> 提到浏览器不会直接执行 innerHTML 中的 script 标签，那就按里面的提示用 img 标签来注入。</p>
+<p>在本地测试的时候发现 chrome 在执行时会一直加载到超时，故加入 <code>document.stop()</code>。</p>
+<pre><code class="language-bash">&gt; echo &quot;100:&lt;img src=&#39;x&#39; onerror=&#39;document.write(\&quot;&lt;\!DOCTYPE html&gt;&lt;html&gt;&lt;head&gt;&lt;/head&gt;&lt;body&gt;&lt;p id=\\\&quot;greeting\\\&quot;&gt;\&quot;+document.cookie+\&quot;&lt;/p&gt;&lt;p id=\\\&quot;score\\\&quot;&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;\&quot;); window.stop() &#39;&gt;&quot; | base64
+MTAwOjxpbWcgc3JjPSd4JyBvbmVycm9yPSdkb2N1bWVudC53cml0ZSgiPCFET0NUWVBFIGh0bWw+PGh0bWw+PGhlYWQ+PC9oZWFkPjxib2R5PjxwIGlkPVwiZ3JlZXRpbmdcIj4iK2RvY3VtZW50LmNvb2tpZSsiPC9wPjxwIGlkPVwic2NvcmVcIj48L3A+PC9ib2R5PjwvaHRtbD4iKTsgd2luZG93LnN0b3AoKSAnPgo=
+</code></pre>
+<p><img src="/content-assets/hackergame-2022/Untitled%2012.png" alt="Hackergame 2022 Writeup 截图 13"></p>
+<h2>把 Wine 问青天</h2>
+<h3>flag1</h3>
+<p>写个 c 语言程序输出 <code>/flag1</code> 的内容即可。</p>
+<h3>flag2</h3>
+<p>由查询可知 wine 在命令行中可以使用 <code>start.exe /unix command</code> 命令运行 Linux 程序。遂 clone 下来 wine 的源码，configure 后每个子模块的 Makefile 都有了，然后打开 <code>programs/start/start.c</code>。</p>
+<p>由源码可知 wmain 的参数 argv 接收参数，因此写死 argv 即可。</p>
+<p>另外在实测中发现 <code>start.exe /unix</code> 不会输出 stdout 的内容，只有 stderr，故将 stdout 重定向至 stderr。</p>
+<pre><code class="language-c">int argc = 5;
+WCHAR *argv[5] = {L&quot;start.exe&quot;, L&quot;/unix&quot;, L&quot;/bin/sh&quot;, L&quot;-c&quot;, L&quot;/readflag 1&gt;&amp;2&quot;};
+</code></pre>
+<p>在 start 目录下 <code>make</code> 获得 <code>start.exe</code>，提交获得 flag。</p>
+<p>另发现如果执行文件名和 wine 内置命令名称相同会执行内置命令，因此在本地测试的时候需要更改文件名。</p>
+<h2>歪，110 吗</h2>
+<p>五局三胜，前两局扔了也没关系。</p>
+<p>源码中的随机数种子为：</p>
+<p><code>srand((unsigned)time(0) + clock());</code></p>
+<p><code>clock</code> 函数为 CPU 时间，具体值视具体操作系统而定，这也是题目给出容器基于 <code>debian:11</code> 的原因。</p>
+<p>根据前两个值枚举 CPU 时间，在 <code>debian:11</code> 环境下获得结果。</p>
+<pre><code class="language-c">#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;time.h&gt;
+#include &lt;string.h&gt;
+
+double rand01(){
+    return (double)rand() / RAND_MAX;
+}
+
+int main(){
+    unsigned int t = (unsigned)time(0);
+    printf(&quot;%u\n&quot;, t);
+
+    char find[8];
+    char find2[8];
+    scanf(&quot;%s&quot;, find);
+    printf(&quot;%s\n&quot;, find);
+    scanf(&quot;%s&quot;, find2);
+    printf(&quot;%s\n&quot;, find2);
+    char target[20];
+    for(unsigned int i = 0; i &lt;= 20000; i++){
+        srand(t + i);
+        int M = 0;
+        int N = 400000;
+        for (int j = 0; j &lt; N; j++) {
+            double x = rand01();
+            double y = rand01();
+            if (x*x + y*y &lt; 1) M++;
+        }
+        double pi = (double)M / N * 4;
+        sprintf(target, &quot;%1.5f&quot;, pi);
+        printf(&quot;%u %s\n&quot;, t + i, target);
+        if (strcmp(target, find) == 0) {
+            int M = 0;
+            for (int j = 0; j &lt; N; j++) {
+                double x = rand01();
+                double y = rand01();
+                if (x*x + y*y &lt; 1) M++;
+            }
+            double pi = (double)M / N * 4;
+            sprintf(target, &quot;%1.5f\0&quot;, pi);
+            printf(&quot; -&gt; %u %s &quot;, t + i, target);
+            printf(&quot;%d\n&quot;, strcmp(target, find2));
+            if (strcmp(target, find2) == 0) {
+                for(int k = 0; k &lt; 3; k++){
+                    int M = 0;
+                    for (int j = 0; j &lt; N; j++) {
+                        double x = rand01();
+                        double y = rand01();
+                        if (x*x + y*y &lt; 1) M++;
+                    }
+                    double pi = (double)M / N * 4;
+                    sprintf(target, &quot;%1.5f\0&quot;, pi);
+                    printf(&quot; -&gt; -&gt; %u %s\n&quot;, t + i, target);
+                }
+                return 0;
+            }
+        }
+    }
+    return 1;
+}
+</code></pre>
+<h2>多几个字符会死吗</h2>
+<h3>HS384</h3>
+<blockquote>
+<p>题目看错，痛失 200 分。就差一点。</p>
+</blockquote>
+<p>有两种情况：<code>没有 e</code> 和 <code>有 e</code>。</p>
+<p>分别枚举即可。</p>
+<p>这个时候体现出一块好 CPU 的重要性。</p>
+<pre><code class="language-python">import json
+
+s = 36
+class Solution(object):
+    def combinationSum(self, candidates, target):
+        result = []
+        candidates.sort()
+        def dfs(total, nums, index):
+            if total &gt; target: return
+            if total == target:
+                if nums not in result:
+                    result.append(nums)
+                return
+            for i in range(index, len(candidates)):
+                dfs(total+candidates[i], nums+[candidates[i]], i)
+        dfs(0, [], 0)
+        r = []
+        for i in result:
+            if len(i) == 9:
+                r.append(i)
+        return r
+
+a = Solution().combinationSum(list(range(1, s + 1)), s)
+json.dump(a, open(&#39;test.json&#39;, &#39;w&#39;))
+print(len(a))
+</code></pre>
+<pre><code class="language-python">import json
+import itertools
+from hashlib import sha384
+from re import I
+import sys
+
+target = &#39;ec18f9dbc4aba825c7d4f9c726db1cb0d0babf47fa170f33d53bc62074271866a4e4d1325dc27f644fdad&#39;
+def permutation(li):
+    return list(itertools.permutations(li))
+
+with open(&#39;test.json&#39;) as f:
+    d = json.load(f) # 1549
+for iii, da in enumerate(d[int(sys.argv[1]):int(sys.argv[2])]):
+    p = permutation(da)
+    print(iii)
+    for iiii, data in enumerate(p):
+        string = &#39;u&#39; * data[0] + &#39;s&#39; * data[1] + &#39;t&#39; *  data[2] + &#39;c&#39; * data[3] + &#39;e.&#39; +\
+            &#39;e&#39; * data[4] + &#39;d&#39; * data[5] + &#39;u&#39; * data[6] + &#39;.&#39; +\
+                &#39;c&#39; * data[7] + &#39;n&#39; * data[8]
+        if iiii % 50000 == 0:
+            print(&#39;-&#39;, iiii, string)
+        result = sha384(string.encode()).hexdigest()
+        i = 0
+        flag = False
+        for ii, x in enumerate(target):
+            res = result.find(x, i)
+            if res != -1:
+                i = res
+            else:
+                break
+            if ii == len(target) - 1:
+                print(&#39;success&#39;, string, result)
+                exit()
+</code></pre>
+<p><img src="/content-assets/hackergame-2022/Untitled%2013.png" alt="Hackergame 2022 Writeup 截图 14"></p>
+<h2>需要一块好显卡</h2>
+<p>把页面拉下来，去掉 <code>fragment-shader.js</code> 中的 <code>t5</code> 即可。</p>
+<p><img src="/content-assets/hackergame-2022/Untitled%2014.png" alt="Hackergame 2022 Writeup 截图 15"></p>
+<p>说起来，这个页面在实验室的 3090 上的渲染帧率是 59.95 FPS。</p>
+<p><img src="/content-assets/hackergame-2022/Untitled%2015.png" alt="Hackergame 2022 Writeup 截图 16"></p>
+<h2>人肉 SD 卡阅读器</h2>
+<h3>引导扇区</h3>
+<p>SPI 接口 4 条信号线：</p>
+<pre><code class="language-text">1) SCLK：串行时钟，用来同步数据传输，由主机输出；
+2) MOSI：主机输出从机输入（Master Output Slaver Input）数据线；
+3) MISO：主机输入从机输出数据线；
+4) SS：片选线，低电平有效，由主机输出。
+</code></pre>
+<p>使用 PulseView 打开时序文件，波特率 24000000，获得 4 个信号，由观察可知最后一个信号为读信号，其中为 SD 卡中保存的内容。</p>
+<p>第一个 flag 在约 8353ns 处开始开始，起始比特为 <code>0110 0110 (f)</code>，根据第 2 个信号的时钟切割比特，直到 <code>0111 1101 (})</code> 为止，之后转换 ASCII 即可。</p>
+<h2>届かないファイル</h2>
+<blockquote>
+<p>注意：这是非预期解。</p>
+</blockquote>
+<p>一行命令解决问题：</p>
+<p><code>rm /sbin/poweroff; exit</code></p>
+<p>然后就是 root shell，两个 flag 都可以直接 cat 出来。</p>
+<h3>怎么发现的</h3>
+<p>进了容器逛了一圈，发现 <code>/etc/init.d/rcS</code> 涉及两个 flag 的权限设置，非常可疑。</p>
+<p>搞不定，恼羞成怒，<code>rm -rf /*</code> 后啥也没了，只剩下 shell 内置命令，遂 exit。</p>
+<p>发现 exit 不出去，报错：</p>
+<p><img src="/content-assets/hackergame-2022/Untitled%2016.png" alt="Hackergame 2022 Writeup 截图 17"></p>
+<p>意识到 <code>exit</code> 可以触发 <code>/etc/init.d/rcS</code>，接下来就是误打误撞的过程，我也忘了。</p>
+<p>flag1 给出了预期解的提示。</p>
+<h2>妮可量子物理世界有名</h2>
+<blockquote>
+<p>我知道出题人想分享学习 1.0 分的量子物理 的喜悦，我很理解他，我分享 2.9 分的《上海堡垒》 的时候也是这个心情。</p>
+</blockquote>
+<p>先上 YouTube 看了一些 BB84 算法的相关视频。这里不解释算法内容，反正不重要。</p>
+<h3>第一章</h3>
+<p>制备基底填 300 个 x，量子态填 300 个 0，测量基底里有几个 x 就填几个 0，进入第二关。</p>
+<h3>第二章</h3>
+<p><img src="/content-assets/hackergame-2022/Untitled%2017.png" alt="Hackergame 2022 Writeup 截图 18"></p>
+<p>奇怪的图片，我的评价是我看不懂。</p>
+<p>网上说是 qiskit 的量子电路图，我在 GitHub 上找到了<a href="https://github.com/atilsamancioglu/QX05-BernsteinVaziraniAlgorithmSimple">这个例子</a> ，感觉还挺好使，图例里全提到了，除了左边那个 <code>|&gt;0</code>。</p>
+<p><img src="/content-assets/hackergame-2022/Untitled%2018.png" alt="Hackergame 2022 Writeup 截图 19"></p>
+<p>在 QuantumCircuit.draw 的代码中搜索 <code>|&gt;0</code> 找到这玩意的定义：</p>
+<pre><code class="language-text">initial_state (bool): Optional. Adds ``|0&gt;`` in the beginning of the wire. Default is False.
+</code></pre>
+<p>看来不是很重要。</p>
+<p>根据栗子复现图片即可。就是有点费眼睛。</p>
+<p>最后需要 measure 一次，否则没有结果。别问我为什么，问妮可学生，他们人均量子高手。</p>
+<p>建议使用 Jupyter Notebook。</p>
+<pre><code class="language-python">%matplotlib inline
+from qiskit import *
+c = QuantumCircuit(129,128)
+c.h(list(range(0, 128)))
+c.x(128)
+c.h(128)
+
+c.barrier()
+c.cx(0, 128)
+c.x(1)
+c.z(2)
+c.x(26)
+c.z(27)
+c.x([31, 46])
+c.z(47)
+
+&#39;&#39;&#39;中间省略 114514 行&#39;&#39;&#39;
+
+c.cx(115, 128)
+c.cx(117, 128)
+c.cx(118, 128)
+c.x(118)
+c.cx(121, 128)
+c.cx(122, 128)
+c.cx(125, 128)
+c.cx(126, 128)
+
+c.barrier()
+c.h(list(range(0, 128)))
+
+c.measure(list(range(0, 128)),list(range(0, 128)))
+
+c.draw(output=&#39;mpl&#39;, initial_state=True, fold=-1)
+
+simulator = Aer.get_backend(&#39;qasm_simulator&#39;)
+result = execute(c, backend=simulator, shots=1000).result()
+counts = result.get_counts()
+print(counts)
+</code></pre>
+<p><img src="/content-assets/hackergame-2022/Untitled%2019.png" alt="Hackergame 2022 Writeup 截图 20"></p>
+<p>128位二进制转换为文本即为 flag。</p>
+<h2>我弟说不定喜欢玩</h2>
+<h3>这么简单我闭眼都可以！</h3>
+<p>4 位二进制共 16 个数，一个个试。</p>
+<h3>大力当然出奇迹啦~</h3>
+<p><del>16 位共 65536 个数，使 action_last 在一轮结束后将框内值改为下一个，然后一直点 L 即可（（</del></p>
+<pre><code class="language-python">async def action_last(self):
+  if self.pc == len(self.inbits):
+    self.pc = 0
+    inbits = int(&#39;&#39;.join(map(str, self.inbits.copy())), 2)
+    inbits += 1
+    self.inbits = list(map(int, bin(inbits)[2:].zfill(len(self.inbits))))
+
+  else:
+    self.pc = len(self.branches)
+</code></pre>
+<p>那自然是不太可能，手会废掉的。</p>
+<p>也没法全自动，texture 会死机。</p>
+<p>把 Board 类单独拎出来，慢慢轮，总会轮到的。</p>
+<pre><code class="language-python">import json
+
+class Board:
+    def __init__(self):
+        self.b = [[i*4+j for j in range(4)] for i in range(4)]
+
+    def _blkpos(self):
+        for i in range(4):
+            for j in range(4):
+                if self.b[i][j] == 15:
+                    return (i, j)
+
+    def reset(self):
+        for i in range(4):
+            for j in range(4):
+                self.b[i][j] = i*4 + j
+
+    def move(self, moves):
+        for m in moves:
+            i, j = self._blkpos()
+            if m == &#39;L&#39;:
+                self.b[i][j] = self.b[i][j-1]
+                self.b[i][j-1] = 15
+            elif m == &#39;R&#39;:
+                self.b[i][j] = self.b[i][j+1]
+                self.b[i][j+1] = 15
+            elif m == &#39;U&#39;:
+                self.b[i][j] = self.b[i-1][j]
+                self.b[i-1][j] = 15
+            else:
+                self.b[i][j] = self.b[i+1][j]
+                self.b[i+1][j] = 15
+
+    def __bool__(self):
+        for i in range(4):
+            for j in range(4):
+                if self.b[i][j] != i*4 + j:
+                    return True
+        return False
+
+board = Board()
+filename = &#39;chals/b16_obf.json&#39;
+inbits = [0]*16
+
+with open(filename) as f:
+    branches = json.load(f)
+
+def watch_pc(index):
+    board.reset()
+    for branch in branches[:index]:
+        board.move(branch[1] if inbits[branch[0]] else branch[2])
+    return bool(board)
+
+while True:
+    inbits_ = int(&#39;&#39;.join(map(str, inbits.copy())), 2)
+    inbits_ += 1
+    inbits = list(map(int, bin(inbits_)[2:].zfill(16)))
+    result = watch_pc(256)
+    print(result, &#39;&#39;.join(map(str, inbits)))
+    assert not result
+</code></pre>
+<h2>我们不一样～不一样～</h2>
+<h3>有手就行</h3>
+<p>按题目提示下载安装 bindiff，成功率还挺高，不成功就换个时间戳，确实是有手就行。</p>
+<h3>唯快不破</h3>
+<p>翻 GitHub 翻到个 <a href="https://github.com/nccgroup/idahunt">idahunt</a> ，可以全自动生成 .idb 或 .i64 文件。缺点是<strong>需要手动修改脚本中的 IDA 安装目录</strong>。</p>
+<p>bindiff.exe 有 CLI 界面，可以自动将目录中的 .idb 或 .i64 转换为 BinExport，并比较后输出文本比较日志。</p>
+<pre><code class="language-text">PS C:\Program Files\BinDiff\bin&gt; .\bindiff.exe --help
+bindiff.exe: Find similarities and differences in disassembled code.
+Usage: bindiff.exe [OPTION] DIRECTORY
+    --output_format (comma-separated list of output formats: log (text file),
+      bin[ary] (BinDiff database loadable by the disassembler plugins));
+      default: bin;
+</code></pre>
+<p>然后正则一下比较日志，输出相同的地址，找不到的随便交一个。</p>
+<pre><code class="language-python">import requests
+import re
+import os
+import subprocess
+import shutil
+from pwn import *
+import time
+
+results = []
+targets = []
+token = &#39;&#39;
+
+def download(url, path):
+    print(f&#39;Downloading {url} to {path}&#39;)
+    r = requests.get(url)
+    with open(path, &#39;wb&#39;) as f:
+        f.write(r.content)
+
+shutil.rmtree(&#39;bin&#39;)
+shutil.rmtree(&#39;result&#39;)
+os.mkdir(&#39;bin&#39;)
+os.mkdir(&#39;result&#39;)
+t = str(int(time.time()) - 60)
+print(&#39;timestamp:&#39; + t)
+
+p = remote(&#39;202.38.93.111&#39;, 12400)
+p.recvuntil(&#39;Please input your token: &#39;)
+p.sendline(token)
+p.recvuntil(&#39;Easy&#39;)
+p.sendline(&#39;2&#39;)
+p.recvuntil(&#39;(y/N)&#39;)
+p.sendline(&#39;N&#39;)
+p.recvuntil(&#39;timestamp:&#39;)
+p.sendline(t)
+for i in range(100):
+    data = p.recvuntil(&#39;2nd binary:&#39;)
+    url = re.findall(&#39;https?://\S+&#39;, data.decode())[0]
+    download(url, f&#39;bin/{i + 1}-1&#39;)
+    data = p.recvuntil(&#39;There is a&#39;)
+    url = re.findall(&#39;https?://\S+&#39;, data.decode())[0]
+    download(url, f&#39;bin/{i + 1}-2&#39;)
+    data = p.recvuntil(&#39;in the first&#39;)
+    target = re.findall(r&#39;0x[0-9A-Za-z]*&#39;, data.decode())[0]
+    targets.append(target)
+    print(&#39;target:&#39;, target)
+    p.recvuntil(&#39;(in hex):&#39;)
+    p.sendline(&#39;0&#39;)
+
+p = subprocess.Popen([&#39;python&#39;, &#39;.\\idahunt\\idahunt.py&#39;, &#39;--inputdir&#39;, &#39;.\\bin\\&#39;, &#39;--analyse&#39;])
+return_code = p.wait()
+
+for i in range(100):
+    os.mkdir(f&#39;result/{i + 1}&#39;)
+    shutil.copyfile(f&#39;bin/{i + 1}-1.i64&#39;, f&#39;result/{i + 1}/{i + 1}-1.i64&#39;)
+    shutil.copyfile(f&#39;bin/{i + 1}-2.i64&#39;, f&#39;result/{i + 1}/{i + 1}-2.i64&#39;)
+    p = subprocess.Popen([&#39;C:\\Program Files\\BinDiff\\bin\\bindiff.exe&#39;, f&#39;.\\result\\{i + 1}&#39;, &#39;--output_format&#39;, &#39;log&#39;])
+    return_code = p.wait()
+    with open(f&#39;./result/{i + 1}/{i + 1}-1_vs_{i + 1}-2.results&#39;) as f:
+        data = f.read()
+    target = targets[i].split(&#39;x&#39;)[1]
+    addrs = re.findall(target.upper().zfill(8) + r&#39;\t[0-9A-Za-z]*\n&#39;, data)
+    if len(addrs):
+        addr = &#39;0x&#39; + addrs[0][9:17].lower().lstrip(&#39;0&#39;)
+    else:
+        addr = None
+    print(i + 1, targets[i], addr)
+    results.append(addr)
+
+p = remote(&#39;202.38.93.111&#39;, 12400)
+p.recvuntil(&#39;Please input your token: &#39;)
+p.sendline(token)
+p.recvuntil(&#39;Easy&#39;)
+p.sendline(&#39;2&#39;)
+p.recvuntil(&#39;(y/N)&#39;)
+p.sendline(&#39;N&#39;)
+p.recvuntil(&#39;timestamp:&#39;)
+p.sendline(t)
+
+for i in range(100):
+    p.recvuntil(&#39;(in hex):&#39;)
+    p.sendline(results[i] if results[i] else &#39;0&#39;)
+    print(&#39;sent:&#39;, i + 1, results[i] if results[i] else &#39;0&#39;)
+data = p.recvall(timeout=5).decode()
+print(data)
+if &#39;flag&#39; in data:
+    break
+</code></pre>
+<p>在第三问中不是很好使，算了。</p>
+<h2>总结</h2>
+<p>我在 Linux Pwn 题型面前感到了深深的无力，想了想还是多看点 Linux Kernel 相关书籍吧。</p>
+<p>math 不会，再见。</p>
+<p>如果我在折腾神经网络的时候顺便阅读一下 <code>torch.load</code> 的代码说不定能再多 250 分。</p>
+<p>傻傻炼丹壬真的炼，改梯度改不下去，晕（哼哼啊啊啊啊）</p>
+<p>今年 Hackergame 延续了往年的风格，难度梯度增加，大佬云集，<del>内卷严重</del>，值得我掏出整整七天熬夜为之折腰。</p>
+<p>感谢主催和出题人和驱动着我内卷的群友们。</p>
+]]></content:encoded>
+            <author>Hanako</author>
+            <category>随便折腾</category>
+            <category>CTF</category>
+            <category>信息安全</category>
+            <category>Hackergame</category>
+            <enclosure url="https://hanako.me/content-assets/hackergame-2022/Untitled.png" length="0" type="image/png"/>
+        </item>
+    </channel>
+</rss>

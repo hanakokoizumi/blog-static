@@ -1,0 +1,10 @@
+:HL["/_next/static/chunks/25znlrwij68a7.css","style"]
+:HL["/content-assets/parallels-rosetta/image-20221101190318861.png","image"]
+:HL["/content-assets/parallels-rosetta/image-20221101190543414.png","image"]
+:HL["/content-assets/parallels-rosetta/image-20221101190849291.png","image"]
+:HL["/content-assets/parallels-rosetta/image-20221101191659940.png","image"]
+:HL["/content-assets/parallels-rosetta/image-20221101192559210.png","image"]
+:HL["/content-assets/parallels-rosetta/image-20221101193304902.png","image"]
+:HL["/content-assets/parallels-rosetta/image-20221101194008837.png","image"]
+:HL["/content-assets/parallels-rosetta/image-20221101194647582.png","image"]
+0:{"tree":{"name":"","param":null,"prefetchHints":16,"slots":{"children":{"name":"posts","param":null,"prefetchHints":0,"slots":{"children":{"name":"slug","param":{"type":"d","key":"parallels-rosetta","siblings":null},"prefetchHints":0,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":0,"slots":null}}}}}}},"staleTime":300,"buildId":"6MR5_3iLbQ9DiVU4CcvPC"}

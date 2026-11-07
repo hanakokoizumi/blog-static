@@ -1,0 +1,6 @@
+1:"$Sreact.fragment"
+2:I[22052,["/_next/static/chunks/0iqw_7utkzeuu.js","/_next/static/chunks/33c3qiivmi8px.js","/_next/static/chunks/1a5mqhx3f0mic.js","/_next/static/chunks/03n9bvskut4sy.js"],"SearchClient"]
+3:I[35308,["/_next/static/chunks/0iqw_7utkzeuu.js","/_next/static/chunks/33c3qiivmi8px.js","/_next/static/chunks/1a5mqhx3f0mic.js"],"OutletBoundary"]
+4:"$Sreact.suspense"
+0:{"rsc":["$","$1","c",{"children":[[["$","header",null,{"className":"page-intro site-shell","children":[["$","p",null,{"className":"eyebrow","children":"Search"}],["$","h1",null,{"children":"搜索"}],["$","p",null,{"children":"查找标题、标签，或者正文中记得的一小段话。"}]]}],["$","section",null,{"className":"search-shell site-shell","children":["$","$L2",null,{}]}]],[["$","script","script-0",{"src":"/_next/static/chunks/03n9bvskut4sy.js","async":true}]],["$","$L3",null,{"children":["$","$4",null,{"name":"Next.MetadataOutlet","children":"$@5"}]}]]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"6MR5_3iLbQ9DiVU4CcvPC"}
+5:null

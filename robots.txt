@@ -1,0 +1,5 @@
+User-Agent: *
+Allow: /
+
+Host: https://hanako.me
+Sitemap: https://hanako.me/sitemap.xml
