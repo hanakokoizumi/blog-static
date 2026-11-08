@@ -1,4 +1,4 @@
-:HL["/_next/static/chunks/25znlrwij68a7.css","style"]
+:HL["/_next/static/chunks/0gf_b_kvj-hzj.css","style"]
 :HL["/content-assets/hackergame-2022/Untitled.png","image"]
 :HL["/content-assets/hackergame-2022/Untitled%201.png","image"]
 :HL["/content-assets/hackergame-2022/Untitled%202.png","image"]
@@ -19,4 +19,4 @@
 :HL["/content-assets/hackergame-2022/Untitled%2017.png","image"]
 :HL["/content-assets/hackergame-2022/Untitled%2018.png","image"]
 :HL["/content-assets/hackergame-2022/Untitled%2019.png","image"]
-0:{"tree":{"name":"","param":null,"prefetchHints":16,"slots":{"children":{"name":"posts","param":null,"prefetchHints":0,"slots":{"children":{"name":"slug","param":{"type":"d","key":"hackergame-2022","siblings":null},"prefetchHints":0,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":0,"slots":null}}}}}}},"staleTime":300,"buildId":"6MR5_3iLbQ9DiVU4CcvPC"}
+0:{"tree":{"name":"","param":null,"prefetchHints":16,"slots":{"children":{"name":"posts","param":null,"prefetchHints":0,"slots":{"children":{"name":"slug","param":{"type":"d","key":"hackergame-2022","siblings":null},"prefetchHints":0,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":0,"slots":null}}}}}}},"staleTime":300,"buildId":"WHxFOl5-ABExufjuESNp0"}
